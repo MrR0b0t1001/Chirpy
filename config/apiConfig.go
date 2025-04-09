@@ -18,6 +18,7 @@ import (
 type APIConfig struct {
 	FileserverHits atomic.Int32
 	DB             *database.Queries
+	JWTSecret      string
 }
 
 func (cfg *APIConfig) MetricsHandler(w http.ResponseWriter, r *http.Request) error {

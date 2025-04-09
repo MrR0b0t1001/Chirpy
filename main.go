@@ -32,7 +32,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	cnfg := &config.APIConfig{
-		DB: database.New(db),
+		DB:        database.New(db),
+		JWTSecret: os.Getenv("JWT_SECRET"),
 	}
 
 	s := server.NewAPIServer(address, mux, cnfg)
