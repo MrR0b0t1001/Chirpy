@@ -8,7 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MrR0b0t1001/Chirpy/internal/auth"
 	"github.com/MrR0b0t1001/Chirpy/internal/database"
+	"github.com/MrR0b0t1001/Chirpy/pkg/types"
 	"github.com/MrR0b0t1001/Chirpy/utils"
 	"github.com/google/uuid"
 )
@@ -16,30 +18,6 @@ import (
 type APIConfig struct {
 	FileserverHits atomic.Int32
 	DB             *database.Queries
-}
-
-type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-}
-
-type CreateUserRequest struct {
-	Email string `json:"email"`
-}
-
-type Chirp struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Body      string    `json:"body"`
-	UserID    uuid.UUID `json:"user_id"`
-}
-
-type CreateChirpRequest struct {
-	Body   string    `json:"body"`
-	UserID uuid.UUID `json:"user_id"`
 }
 
 func (cfg *APIConfig) MetricsHandler(w http.ResponseWriter, r *http.Request) error {
@@ -66,8 +44,10 @@ func (cfg *APIConfig) MiddlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
 func (cfg *APIConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) error {
-	req := CreateUserRequest{}
+	req := types.CreateUserRequest{}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return utils.WriteJSON(
 			w,
@@ -76,11 +56,17 @@ func (cfg *APIConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) e
 		)
 	}
 
+	hashedPassword, err := auth.HashPassword(req.Password)
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusBadRequest, err)
+	}
+
 	user, err := cfg.DB.CreateUser(r.Context(), database.CreateUserParams{
-		ID:        uuid.New(),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-		Email:     req.Email,
+		ID:             uuid.New(),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+		Email:          req.Email,
+		HashedPassword: hashedPassword,
 	})
 	if err != nil {
 		return utils.WriteJSON(
@@ -90,7 +76,7 @@ func (cfg *APIConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) e
 		)
 	}
 
-	return utils.WriteJSON(w, http.StatusCreated, User{
+	return utils.WriteJSON(w, http.StatusCreated, types.User{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
@@ -112,14 +98,40 @@ func (cfg *APIConfig) HandleDeleteUsers(w http.ResponseWriter, r *http.Request) 
 	return utils.WriteJSON(w, http.StatusOK, utils.ApiDelResponse{Message: "Reset Successful"})
 }
 
-func (cfg *APIConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) error {
-	req := CreateChirpRequest{}
+func (cfg *APIConfig) HandleLogin(w http.ResponseWriter, r *http.Request) error {
+	req := types.LoginUserRequest{}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return utils.WriteJSON(w, http.StatusBadRequest, err)
 	}
 
-	if ok := validateChirp(req.Body); !ok {
+	user, err := cfg.DB.GetUserByEmail(r.Context(), req.Email)
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusNotFound, err)
+	}
+
+	if err := auth.CheckHashPassword(user.HashedPassword, req.Password); err != nil {
+		return utils.WriteJSON(w, http.StatusUnauthorized, err)
+	}
+
+	return utils.WriteJSON(w, http.StatusOK, types.User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (cfg *APIConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) error {
+	req := types.CreateChirpRequest{}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return utils.WriteJSON(w, http.StatusBadRequest, err)
+	}
+
+	if ok := utils.ValidateChirp(req.Body); !ok {
 		return utils.WriteJSON(
 			w,
 			http.StatusBadRequest,
@@ -142,7 +154,7 @@ func (cfg *APIConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) 
 		)
 	}
 
-	return utils.WriteJSON(w, http.StatusCreated, Chirp{
+	return utils.WriteJSON(w, http.StatusCreated, types.Chirp{
 		ID:        chirp.ID,
 		CreatedAt: chirp.CreatedAt,
 		UpdatedAt: chirp.UpdatedAt,
@@ -151,9 +163,42 @@ func (cfg *APIConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-func validateChirp(body string) bool {
-	if len(body) > 140 {
-		return false
+func (cfg *APIConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) error {
+	chirps, err := cfg.DB.GetChirps(r.Context())
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusBadRequest, err)
 	}
-	return true
+
+	chirpsArray := []types.Chirp{}
+	for _, chirp := range chirps {
+		chirpsArray = append(chirpsArray, types.Chirp{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		})
+	}
+
+	return utils.WriteJSON(w, http.StatusOK, chirpsArray)
+}
+
+func (cfg *APIConfig) HandleGetChirpByID(w http.ResponseWriter, r *http.Request) error {
+	id, err := utils.ExtractID(r)
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusNotFound, err)
+	}
+
+	chirp, err := cfg.DB.GetChirpByID(r.Context(), id)
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusNotFound, err)
+	}
+
+	return utils.WriteJSON(w, http.StatusOK, types.Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
 }

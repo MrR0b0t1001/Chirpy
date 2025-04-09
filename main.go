@@ -21,10 +21,13 @@ func main() {
 		log.Fatalf("Error loading .env file: %v\n", err)
 	}
 
-	dbURL := os.Getenv("DB_URL")
-	db, err := sql.Open("postgres", dbURL)
+	db, err := sql.Open("postgres", os.Getenv("DB_URL"))
 	if err != nil {
-		log.Println("Error connecting to chirpy")
+		log.Fatalf("Error connecting to chirpy: %v", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		log.Fatal("Chirpy DB appears to be down. Please start it and try again...")
 	}
 
 	mux := http.NewServeMux()

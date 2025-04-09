@@ -37,12 +37,18 @@ func (s *APIServer) Run() {
 	)
 
 	s.handler.HandleFunc("GET /api/healthz", health.HandleHealthz)
+	s.handler.HandleFunc("GET /api/chirps", utils.MakeHTTPHandleFunc(s.config.HandleGetChirps))
+	s.handler.HandleFunc(
+		"GET /api/chirps/{chirpID}",
+		utils.MakeHTTPHandleFunc(s.config.HandleGetChirpByID),
+	)
 
 	s.handler.HandleFunc("GET /admin/metrics", utils.MakeHTTPHandleFunc(s.config.MetricsHandler))
 	s.handler.HandleFunc("POST /admin/reset", utils.MakeHTTPHandleFunc(s.config.HandleDeleteUsers))
 
 	s.handler.HandleFunc("POST /api/users", utils.MakeHTTPHandleFunc(s.config.HandleCreateUser))
 	s.handler.HandleFunc("POST /api/chirps", utils.MakeHTTPHandleFunc(s.config.HandleCreateChirp))
+	s.handler.HandleFunc("POST /api/login", utils.MakeHTTPHandleFunc(s.config.HandleLogin))
 
 	log.Printf("Starting server on %s...", s.listenAddr)
 
