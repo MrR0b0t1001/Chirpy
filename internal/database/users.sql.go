@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,6 +47,49 @@ func (q *Queries) CreateChirp(ctx context.Context, arg CreateChirpParams) (Chirp
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Body,
+		&i.UserID,
+	)
+	return i, err
+}
+
+const createRefreshToken = `-- name: CreateRefreshToken :one
+INSERT INTO refresh_tokens (token, created_at, updated_at, expires_at, revoked_at, user_id)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5, 
+    $6
+)
+RETURNING token, created_at, updated_at, expires_at, revoked_at, user_id
+`
+
+type CreateRefreshTokenParams struct {
+	Token     string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt sql.NullTime
+	UserID    uuid.UUID
+}
+
+func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, createRefreshToken,
+		arg.Token,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ExpiresAt,
+		arg.RevokedAt,
+		arg.UserID,
+	)
+	var i RefreshToken
+	err := row.Scan(
+		&i.Token,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
 		&i.UserID,
 	)
 	return i, err
@@ -167,4 +211,52 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.HashedPassword,
 	)
 	return i, err
+}
+
+const getUserFromRefreshToken = `-- name: GetUserFromRefreshToken :one
+SELECT token, created_at, updated_at, expires_at, revoked_at, user_id
+FROM refresh_tokens 
+WHERE refresh_tokens.token = $1
+`
+
+func (q *Queries) GetUserFromRefreshToken(ctx context.Context, token string) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, getUserFromRefreshToken, token)
+	var i RefreshToken
+	err := row.Scan(
+		&i.Token,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.UserID,
+	)
+	return i, err
+}
+
+const revokeUserToken = `-- name: RevokeUserToken :exec
+UPDATE refresh_tokens 
+SET revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+WHERE refresh_tokens.token = $1
+`
+
+func (q *Queries) RevokeUserToken(ctx context.Context, token string) error {
+	_, err := q.db.ExecContext(ctx, revokeUserToken, token)
+	return err
+}
+
+const updateUserCreds = `-- name: UpdateUserCreds :exec
+UPDATE users 
+SET email = $1, hashed_password = $2, updated_at = CURRENT_TIMESTAMP
+WHERE users.id = $3
+`
+
+type UpdateUserCredsParams struct {
+	Email          string
+	HashedPassword string
+	ID             uuid.UUID
+}
+
+func (q *Queries) UpdateUserCreds(ctx context.Context, arg UpdateUserCredsParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserCreds, arg.Email, arg.HashedPassword, arg.ID)
+	return err
 }

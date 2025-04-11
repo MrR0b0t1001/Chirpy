@@ -11,9 +11,8 @@ import (
 func TestMakeJWT(t *testing.T) {
 	userID := uuid.New()
 	tokenSecret := os.Getenv("JWT_SECRET")
-	expiresIn := time.Hour
 
-	token, err := MakeJWT(userID, tokenSecret, expiresIn)
+	token, err := MakeJWT(userID, tokenSecret)
 	if err != nil {
 		t.Errorf("Expected no error while creating JWT, got %v", err)
 	}
@@ -25,9 +24,8 @@ func TestMakeJWT(t *testing.T) {
 func TestValidateJWT(t *testing.T) {
 	userID := uuid.New()
 	tokenSecret := os.Getenv("JWT_SECRET")
-	expiresIn := time.Hour * 1
 
-	token, err := MakeJWT(userID, tokenSecret, expiresIn)
+	token, err := MakeJWT(userID, tokenSecret)
 	if err != nil {
 		t.Errorf("Expected no error while creating JWT, got %v", err)
 	}
@@ -44,9 +42,8 @@ func TestValidateJWT(t *testing.T) {
 func TestValidateExpiredJWT(t *testing.T) {
 	userID := uuid.New()
 	tokenSecret := os.Getenv("JWT_SECRET")
-	expiresIn := -time.Hour
 
-	token, err := MakeJWT(userID, tokenSecret, expiresIn)
+	token, err := MakeJWT(userID, tokenSecret)
 	if err != nil {
 		t.Errorf("Expected no error while creating JWT, got %v", err)
 	}
@@ -61,9 +58,8 @@ func TestValidateExpiredJWT(t *testing.T) {
 func TestValidateJWTWithWrongSecret(t *testing.T) {
 	userID := uuid.New()
 	tokenSecret := "secretKey"
-	expiresIn := time.Hour
 
-	token, err := MakeJWT(userID, tokenSecret, expiresIn)
+	token, err := MakeJWT(userID, tokenSecret)
 	if err != nil {
 		t.Errorf("Expected no error while creating JWT, got %v", err)
 	}

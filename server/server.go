@@ -49,6 +49,10 @@ func (s *APIServer) Run() {
 	s.handler.HandleFunc("POST /api/users", utils.MakeHTTPHandleFunc(s.config.HandleCreateUser))
 	s.handler.HandleFunc("POST /api/chirps", utils.MakeHTTPHandleFunc(s.config.HandleCreateChirp))
 	s.handler.HandleFunc("POST /api/login", utils.MakeHTTPHandleFunc(s.config.HandleLogin))
+	s.handler.HandleFunc("POST /api/refresh", utils.MakeHTTPHandleFunc(s.config.HandleRefresh))
+	s.handler.HandleFunc("POST /api/revoke", utils.MakeHTTPHandleFunc(s.config.HandleRevoke))
+
+	s.handler.HandleFunc("PUT /api/users", utils.MakeHTTPHandleFunc(s.config.HandleUpdateUser))
 
 	log.Printf("Starting server on %s...", s.listenAddr)
 
