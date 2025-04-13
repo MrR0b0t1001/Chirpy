@@ -212,6 +212,52 @@ func (q *Queries) GetChirps(ctx context.Context) ([]Chirp, error) {
 	return items, nil
 }
 
+const getChirpsByAuthorID = `-- name: GetChirpsByAuthorID :many
+SELECT id, created_at, updated_at, body, user_id, chirps.user_id as author_id 
+FROM chirps 
+WHERE chirps.user_id = $1
+ORDER BY chirps.created_at ASC
+`
+
+type GetChirpsByAuthorIDRow struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Body      string
+	UserID    uuid.UUID
+	AuthorID  uuid.UUID
+}
+
+func (q *Queries) GetChirpsByAuthorID(ctx context.Context, userID uuid.UUID) ([]GetChirpsByAuthorIDRow, error) {
+	rows, err := q.db.QueryContext(ctx, getChirpsByAuthorID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetChirpsByAuthorIDRow
+	for rows.Next() {
+		var i GetChirpsByAuthorIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Body,
+			&i.UserID,
+			&i.AuthorID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, created_at, updated_at, email, hashed_password, is_chirpy_red FROM users 
 WHERE users.email = $1

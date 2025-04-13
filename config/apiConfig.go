@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -207,23 +209,55 @@ func (cfg *APIConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) 
 }
 
 func (cfg *APIConfig) HandleGetChirps(w http.ResponseWriter, r *http.Request) error {
-	chirps, err := cfg.DB.GetChirps(r.Context())
-	if err != nil {
-		return utils.WriteJSON(w, http.StatusBadRequest, err)
+	authorIDStr := r.URL.Query().Get("author_id")
+	sortStr := strings.ToLower(r.URL.Query().Get("sort"))
+
+	chirps := []types.Chirp{}
+
+	if authorIDStr != "" {
+		authorID, err := uuid.Parse(authorIDStr)
+		if err != nil {
+			return utils.WriteJSON(w, http.StatusBadRequest, err)
+		}
+		dbChirps, err := cfg.DB.GetChirpsByAuthorID(r.Context(), authorID)
+		if err != nil {
+			return utils.WriteJSON(w, http.StatusInternalServerError, err)
+		}
+
+		for _, c := range dbChirps {
+			chirps = append(chirps, types.Chirp{
+				ID:        c.ID,
+				CreatedAt: c.CreatedAt,
+				UpdatedAt: c.UpdatedAt,
+				Body:      c.Body,
+				UserID:    c.UserID, // or c.AuthorID if that's what's in the query
+			})
+		}
+	} else {
+		dbChirps, err := cfg.DB.GetChirps(r.Context())
+		if err != nil {
+			return utils.WriteJSON(w, http.StatusInternalServerError, err)
+		}
+
+		for _, c := range dbChirps {
+			chirps = append(chirps, types.Chirp{
+				ID:        c.ID,
+				CreatedAt: c.CreatedAt,
+				UpdatedAt: c.UpdatedAt,
+				Body:      c.Body,
+				UserID:    c.UserID,
+			})
+		}
 	}
 
-	chirpsArray := []types.Chirp{}
-	for _, chirp := range chirps {
-		chirpsArray = append(chirpsArray, types.Chirp{
-			ID:        chirp.ID,
-			CreatedAt: chirp.CreatedAt,
-			UpdatedAt: chirp.UpdatedAt,
-			Body:      chirp.Body,
-			UserID:    chirp.UserID,
+	// Sorting if requested
+	if sortStr == "desc" {
+		sort.Slice(chirps, func(i, j int) bool {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
 		})
 	}
 
-	return utils.WriteJSON(w, http.StatusOK, chirpsArray)
+	return utils.WriteJSON(w, http.StatusOK, chirps)
 }
 
 func (cfg *APIConfig) HandleGetChirpByID(w http.ResponseWriter, r *http.Request) error {

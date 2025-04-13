@@ -79,3 +79,9 @@ UPDATE users
 SET is_chirpy_red = TRUE
 WHERE users.id = $1;
 
+
+-- name: GetChirpsByAuthorID :many 
+SELECT *, chirps.user_id as author_id 
+FROM chirps 
+WHERE chirps.user_id = $1
+ORDER BY chirps.created_at ASC;
