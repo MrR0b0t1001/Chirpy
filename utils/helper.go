@@ -27,3 +27,7 @@ func ExtractID(r *http.Request) (uuid.UUID, error) {
 
 	return chirpID, nil
 }
+
+func PermissionDenied(w http.ResponseWriter) {
+	WriteJSON(w, http.StatusUnauthorized, ApiError{Error: "Invalid Token"})
+}

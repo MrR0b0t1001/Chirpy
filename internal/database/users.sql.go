@@ -104,7 +104,7 @@ VALUES (
     $4, 
     $5
 )
-RETURNING id, created_at, updated_at, email, hashed_password
+RETURNING id, created_at, updated_at, email, hashed_password, is_chirpy_red
 `
 
 type CreateUserParams struct {
@@ -130,6 +130,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
+		&i.IsChirpyRed,
 	)
 	return i, err
 }
@@ -140,6 +141,22 @@ DELETE FROM users
 
 func (q *Queries) DeleteAllUsers(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteAllUsers)
+	return err
+}
+
+const deleteChirpByID = `-- name: DeleteChirpByID :exec
+DELETE 
+FROM chirps
+WHERE chirps.id = $1 AND chirps.user_id = $2
+`
+
+type DeleteChirpByIDParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) DeleteChirpByID(ctx context.Context, arg DeleteChirpByIDParams) error {
+	_, err := q.db.ExecContext(ctx, deleteChirpByID, arg.ID, arg.UserID)
 	return err
 }
 
@@ -196,7 +213,7 @@ func (q *Queries) GetChirps(ctx context.Context) ([]Chirp, error) {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, created_at, updated_at, email, hashed_password FROM users 
+SELECT id, created_at, updated_at, email, hashed_password, is_chirpy_red FROM users 
 WHERE users.email = $1
 `
 
@@ -209,6 +226,26 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
+		&i.IsChirpyRed,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, created_at, updated_at, email, hashed_password, is_chirpy_red FROM users 
+WHERE users.id = $1
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.HashedPassword,
+		&i.IsChirpyRed,
 	)
 	return i, err
 }
@@ -258,5 +295,16 @@ type UpdateUserCredsParams struct {
 
 func (q *Queries) UpdateUserCreds(ctx context.Context, arg UpdateUserCredsParams) error {
 	_, err := q.db.ExecContext(ctx, updateUserCreds, arg.Email, arg.HashedPassword, arg.ID)
+	return err
+}
+
+const updateUserRed = `-- name: UpdateUserRed :exec
+UPDATE users 
+SET is_chirpy_red = TRUE
+WHERE users.id = $1
+`
+
+func (q *Queries) UpdateUserRed(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, updateUserRed, id)
 	return err
 }

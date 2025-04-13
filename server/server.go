@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	cfg "github.com/MrR0b0t1001/Chirpy/config"
+
 	"github.com/MrR0b0t1001/Chirpy/handlers/health"
+	"github.com/MrR0b0t1001/Chirpy/middleware"
 	"github.com/MrR0b0t1001/Chirpy/utils"
 )
 
@@ -47,12 +49,34 @@ func (s *APIServer) Run() {
 	s.handler.HandleFunc("POST /admin/reset", utils.MakeHTTPHandleFunc(s.config.HandleDeleteUsers))
 
 	s.handler.HandleFunc("POST /api/users", utils.MakeHTTPHandleFunc(s.config.HandleCreateUser))
-	s.handler.HandleFunc("POST /api/chirps", utils.MakeHTTPHandleFunc(s.config.HandleCreateChirp))
 	s.handler.HandleFunc("POST /api/login", utils.MakeHTTPHandleFunc(s.config.HandleLogin))
+	s.handler.HandleFunc(
+		"POST /api/chirps",
+		middleware.WithJWTAuth(utils.MakeHTTPHandleFunc(s.config.HandleCreateChirp), s.config),
+	)
+
+	// Can't use middleware wrapper since they are using refresh token
+	// And refresh tokens don't use the JWT Secret
 	s.handler.HandleFunc("POST /api/refresh", utils.MakeHTTPHandleFunc(s.config.HandleRefresh))
 	s.handler.HandleFunc("POST /api/revoke", utils.MakeHTTPHandleFunc(s.config.HandleRevoke))
 
-	s.handler.HandleFunc("PUT /api/users", utils.MakeHTTPHandleFunc(s.config.HandleUpdateUser))
+	s.handler.HandleFunc(
+		"PUT /api/users",
+		middleware.WithJWTAuth(utils.MakeHTTPHandleFunc(s.config.HandleUpdateUser), s.config),
+	)
+
+	s.handler.HandleFunc(
+		"DELETE /api/chirps/{chirpID}",
+		middleware.WithJWTAuth(utils.MakeHTTPHandleFunc(s.config.HandleDeleteChirp), s.config),
+	)
+
+	s.handler.HandleFunc(
+		"POST /api/polka/webhooks",
+		middleware.WithAPIAuth(
+			utils.MakeHTTPHandleFunc(s.config.HandlePolkaUpdate),
+			s.config,
+		),
+	)
 
 	log.Printf("Starting server on %s...", s.listenAddr)
 

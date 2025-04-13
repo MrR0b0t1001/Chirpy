@@ -13,6 +13,11 @@ RETURNING *;
 SELECT * FROM users 
 WHERE users.email = $1; 
 
+-- name: GetUserByID :one
+SELECT * FROM users 
+WHERE users.id = $1; 
+
+
 -- name: DeleteAllUsers :exec
 DELETE FROM users;
 
@@ -34,6 +39,12 @@ ORDER BY chirps.created_at ASC;
 -- name: GetChirpByID :one
 SELECT * FROM chirps
 WHERE chirps.ID = $1; 
+
+-- name: DeleteChirpByID :exec
+DELETE 
+FROM chirps
+WHERE chirps.id = $1 AND chirps.user_id = $2;
+
 
 -- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (token, created_at, updated_at, expires_at, revoked_at, user_id)
@@ -61,3 +72,10 @@ WHERE refresh_tokens.token = $1;
 UPDATE users 
 SET email = $1, hashed_password = $2, updated_at = CURRENT_TIMESTAMP
 WHERE users.id = $3;
+
+
+-- name: UpdateUserRed :exec 
+UPDATE users 
+SET is_chirpy_red = TRUE
+WHERE users.id = $1;
+

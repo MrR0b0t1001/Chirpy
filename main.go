@@ -34,6 +34,7 @@ func main() {
 	cnfg := &config.APIConfig{
 		DB:        database.New(db),
 		JWTSecret: os.Getenv("JWT_SECRET"),
+		APIKey:    os.Getenv("POLKA_KEY"),
 	}
 
 	s := server.NewAPIServer(address, mux, cnfg)

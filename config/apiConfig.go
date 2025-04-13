@@ -19,6 +19,7 @@ type APIConfig struct {
 	FileserverHits atomic.Int32
 	DB             *database.Queries
 	JWTSecret      string
+	APIKey         string
 }
 
 func (cfg *APIConfig) MetricsHandler(w http.ResponseWriter, r *http.Request) error {
@@ -78,10 +79,11 @@ func (cfg *APIConfig) HandleCreateUser(w http.ResponseWriter, r *http.Request) e
 	}
 
 	return utils.WriteJSON(w, http.StatusCreated, types.User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	})
 }
 
@@ -150,27 +152,19 @@ func (cfg *APIConfig) HandleLogin(w http.ResponseWriter, r *http.Request) error 
 		Email:        user.Email,
 		Token:        token,
 		RefreshToken: rToken,
+		IsChirpyRed:  user.IsChirpyRed,
 	})
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (cfg *APIConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) error {
-	token, err := auth.GetBearerToken(r.Header)
-	if err != nil {
+	userID, ok := r.Context().Value("userID").(uuid.UUID)
+	if !ok {
 		return utils.WriteJSON(
 			w,
 			http.StatusUnauthorized,
-			utils.ApiError{Error: "Provided token is not valid"},
-		)
-	}
-
-	id, err := auth.ValidateJWT(token, cfg.JWTSecret)
-	if err != nil {
-		return utils.WriteJSON(
-			w,
-			http.StatusUnauthorized,
-			utils.ApiError{Error: "JWT token invalid"},
+			utils.ApiError{Error: "Unauthorized Action"},
 		)
 	}
 
@@ -193,7 +187,7 @@ func (cfg *APIConfig) HandleCreateChirp(w http.ResponseWriter, r *http.Request) 
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 		Body:      req.Body,
-		UserID:    id,
+		UserID:    userID,
 	})
 	if err != nil {
 		return utils.WriteJSON(
@@ -295,16 +289,14 @@ func (cfg *APIConfig) HandleRevoke(w http.ResponseWriter, r *http.Request) error
 }
 
 func (cfg *APIConfig) HandleUpdateUser(w http.ResponseWriter, r *http.Request) error {
-	authToken, err := auth.GetBearerToken(r.Header)
-	if err != nil {
-		return utils.WriteJSON(w, http.StatusUnauthorized, err)
+	userID, ok := r.Context().Value("userID").(uuid.UUID)
+	if !ok {
+		return utils.WriteJSON(
+			w,
+			http.StatusUnauthorized,
+			utils.ApiError{Error: "Unauthorized Action"},
+		)
 	}
-
-	userID, err := auth.ValidateJWT(authToken, cfg.JWTSecret)
-	if err != nil {
-		return utils.WriteJSON(w, http.StatusUnauthorized, err)
-	}
-
 	req := types.UpdateUserRequest{}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -330,9 +322,73 @@ func (cfg *APIConfig) HandleUpdateUser(w http.ResponseWriter, r *http.Request) e
 	}
 
 	return utils.WriteJSON(w, http.StatusOK, types.User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	})
+}
+
+func (cfg *APIConfig) HandleDeleteChirp(w http.ResponseWriter, r *http.Request) error {
+	userID, ok := r.Context().Value("userID").(uuid.UUID)
+	if !ok {
+		return utils.WriteJSON(
+			w,
+			http.StatusForbidden,
+			utils.ApiError{Error: "Forbidden Action"},
+		)
+	}
+
+	chirpID, err := utils.ExtractID(r)
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusBadRequest, err)
+	}
+
+	chirp, err := cfg.DB.GetChirpByID(r.Context(), chirpID)
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusNotFound, utils.ApiError{Error: "Chirp Not found"})
+	}
+
+	if chirp.UserID != userID {
+		return utils.WriteJSON(w, http.StatusForbidden, utils.ApiError{Error: "Forbidden Action"})
+	}
+
+	if err := cfg.DB.DeleteChirpByID(r.Context(), database.DeleteChirpByIDParams{
+		ID:     chirp.ID,
+		UserID: chirp.UserID,
+	}); err != nil {
+		return utils.WriteJSON(
+			w,
+			http.StatusNotFound,
+			utils.ApiError{Error: "Chirp Not deleted"},
+		)
+	}
+
+	return utils.WriteJSON(w, http.StatusNoContent, nil)
+}
+
+//////////////////////////////////////////////////////////////////
+
+func (cfg *APIConfig) HandlePolkaUpdate(w http.ResponseWriter, r *http.Request) error {
+	req := types.PolkaUpdateRequest{}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return utils.WriteJSON(w, http.StatusBadRequest, err)
+	}
+
+	if req.Event != "user.upgraded" {
+		return utils.WriteJSON(w, http.StatusNoContent, nil)
+	}
+
+	userID, err := uuid.Parse(req.Data.UserID)
+	if err != nil {
+		return utils.WriteJSON(w, http.StatusBadRequest, err)
+	}
+
+	if err := cfg.DB.UpdateUserRed(r.Context(), userID); err != nil {
+		return utils.WriteJSON(w, http.StatusNotFound, err)
+	}
+
+	return utils.WriteJSON(w, http.StatusNoContent, nil)
 }
